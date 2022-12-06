@@ -1,0 +1,11 @@
+[
+{
+  "modid": "moddistributor",
+  "name": "Mod Distributor",
+  "description": "Distributes mods from the server to clients when they attempt to connect",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "authorList": ["Laike_Endaril"],
+  "credits": ""
+}
+]
