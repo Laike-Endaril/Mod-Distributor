@@ -2,7 +2,7 @@
 {
   "modid": "moddistributor",
   "name": "Mod Distributor",
-  "description": "Distributes mods from the server to clients when they attempt to connect",
+  "description": "Adds a download button to the multiplayer menu which downloads the modpack from the selected server",
   "version": "${version}",
   "mcversion": "${mcversion}",
   "authorList": ["Laike_Endaril"],
