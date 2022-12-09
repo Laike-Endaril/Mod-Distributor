@@ -1,2 +1,2 @@
 # Mod-Distributor
-Distributes mods from the server to clients when they attempt to connect
+Adds a download button to the multiplayer menu which downloads the modpack from the selected server
