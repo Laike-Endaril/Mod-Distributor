@@ -1,3 +1,1 @@
-Make server tell client to remove mods based on "modsRemove" folder content
 Show download progress
-When downloads finish, start daemon thread which closes the game, deletes mods based on what server told us to remove, and then moves mods from downloads folder to mods folder

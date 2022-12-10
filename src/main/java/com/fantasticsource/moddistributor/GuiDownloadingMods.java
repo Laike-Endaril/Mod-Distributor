@@ -12,6 +12,7 @@ import java.util.ArrayList;
 
 public class GuiDownloadingMods extends GuiScreen
 {
+    public static final ArrayList<String> modsToRemove = new ArrayList<>();
     public GuiScreen parentScreen;
     public ArrayList<String> textLines = new ArrayList<>();
     public Socket clientSocket = null;
@@ -26,12 +27,14 @@ public class GuiDownloadingMods extends GuiScreen
 
         try
         {
+            File modsDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "mods");
+
             clientSocket = new Socket(ip, 55565);
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
-            File[] files = new File(MCTools.getConfigDir() + ".." + File.separator + "mods").listFiles();
-            if (files != null)
+            File[] modFiles = modsDirectory.listFiles();
+            if (modFiles != null)
             {
-                for (File file : files)
+                for (File file : modFiles)
                 {
                     if (file.isDirectory()) continue;
 
@@ -58,6 +61,60 @@ public class GuiDownloadingMods extends GuiScreen
                     long remaining;
                     String filename;
                     DataInputStream inputStream = new DataInputStream(clientSocket.getInputStream());
+
+                    //Populate mod removal list
+                    for (int fileRemovalCount = inputStream.readInt(); fileRemovalCount > 0; fileRemovalCount--)
+                    {
+                        remaining = inputStream.readInt();
+                        filename = "";
+                        for (; remaining > 0; remaining--) filename += inputStream.readChar();
+                        modsToRemove.add(filename);
+                    }
+
+
+                    //Create batch files to...
+                    //...delete jars when possible
+                    //...then move new jars
+                    //...then delete themselves
+                    //and run them
+                    if (modsToRemove.size() > 0)
+                    {
+                        File file = new File(modsDirectory + File.separator + "delete_when_possible.bat");
+                        while (file.exists()) file.delete();
+                        BufferedWriter writer2 = new BufferedWriter(new FileWriter(file));
+                        writer2.write("@echo off\r\n" +
+                                ":loop > nul 2> nul\r\n" +
+                                "del %1 > nul 2> nul\r\n" +
+                                "if exist %1 goto loop > nul 2> nul\r\n" +
+                                "exit > nul 2> nul\r\n");
+                        writer2.close();
+
+
+                        file = new File(modsDirectory + File.separator + "mods to delete.txt");
+                        while (file.exists()) file.delete();
+                        writer2 = new BufferedWriter(new FileWriter(file));
+                        for (String s : modsToRemove) writer2.write(s + "\r\n");
+                        writer2.close();
+
+
+                        file = new File("delete_multiple_when_possible.bat");
+                        while (file.exists()) file.delete();
+                        writer2 = new BufferedWriter(new FileWriter(file));
+                        writer2.write("@echo off\r\n" +
+                                "cd mods > nul 2> nul\r\n" +
+                                "for /F \"usebackq tokens=*\" %%A in (\"mods to delete.txt\") do start /min /wait delete_when_possible.bat \"%%A\" > nul 2> nul\r\n" +
+                                "del delete_when_possible.bat > nul 2> nul\r\n" +
+                                "del " + '"' + "mods to delete.txt" + '"' + " > nul 2> nul\r\n" +
+                                "cd .. > nul 2> nul\r\n" +
+                                "move modsDownloading" + File.separator + "* mods > nul 2> nul\r\n" +
+                                "del delete_multiple_when_possible.bat > nul 2> nul & exit > nul 2> nul\r\n");
+                        writer2.close();
+
+                        Runtime.getRuntime().exec("cmd /c start /min " + file.getName());
+                    }
+
+
+                    //Receive new mod files
                     while (true)
                     {
                         remaining = inputStream.readInt();
@@ -66,9 +123,8 @@ public class GuiDownloadingMods extends GuiScreen
                         {
                             filename = "";
                             for (; remaining > 0; remaining--) filename += inputStream.readChar();
-                            System.out.println(filename);
                             File file = new File(downloadsDirectory.getAbsolutePath() + File.separator + filename);
-                            while (file.exists()) file.delete();
+                            while (file.exists()) file.delete(); //Delete from downloads folder if it already exists there
                             FileOutputStream outputStream = new FileOutputStream(file);
 
                             remaining = inputStream.readLong();
@@ -80,12 +136,19 @@ public class GuiDownloadingMods extends GuiScreen
                             outputStream.close();
                         }
                     }
+
+                    //Close
                     clientSocket.close();
                 }
                 catch (IOException e)
                 {
                     e.printStackTrace();
                 }
+
+
+                textLines.clear();
+                textLines.add("Done! Restart the game to finish the update.");
+                textLines.add("DO NOT CLOSE COMMAND PROMPT WINDOWS!!!");
             }).start();
         }
         catch (IOException e)

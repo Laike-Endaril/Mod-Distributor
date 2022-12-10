@@ -89,10 +89,14 @@ public class ThreadedServerSocket
             }
 
 
-            //Generate lists of filenames to send
-            File modsDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "mods"), clientOnlyModsDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "modsClientOnly");
-            File[] modFiles = modsDirectory.listFiles(), clientOnlyModFiles = clientOnlyModsDirectory.listFiles();
-            HashMap<String, Long> modsToSend = new HashMap<>(), clientOnlyModsToSend = new HashMap<>();
+            //Generate lists of filenames to send to client and to remove from client
+            File modsDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "mods");
+            File modsClientOnlyDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "modsClientOnly");
+            File modsToRemoveDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "modsToRemove");
+
+            File[] modFiles = modsDirectory.listFiles(), clientOnlyModFiles = modsClientOnlyDirectory.listFiles(), modFilesToRemove = modsToRemoveDirectory.listFiles();
+
+            HashMap<String, Long> modsToSend = new HashMap<>(), clientOnlyModsToSend = new HashMap<>(), modsToRemove = new HashMap<>();
             try
             {
                 if (modFiles != null)
@@ -121,6 +125,19 @@ public class ThreadedServerSocket
                         clientOnlyModsToSend.put(filename, Files.size(file.toPath()));
                     }
                 }
+                if (modFilesToRemove != null)
+                {
+                    for (File file : modFilesToRemove)
+                    {
+                        if (file.isDirectory()) continue;
+
+                        String filename = file.getName();
+                        if (!filename.substring(filename.length() - 3).equals("jar")) continue;
+
+
+                        modsToRemove.put(filename, Files.size(file.toPath()));
+                    }
+                }
             }
             catch (IOException e)
             {
@@ -128,8 +145,10 @@ public class ThreadedServerSocket
             }
 
 
+            HashMap<String, Long> existingClientMods = new HashMap<>();
             String line, filename = "";
             byte[] fileBytes;
+            long size;
             while (true)
             {
                 try
@@ -140,14 +159,30 @@ public class ThreadedServerSocket
                         if (filename.equals("")) filename = line;
                         else
                         {
-                            //Remove any matching mods the client already has from both lists
-                            modsToSend.remove(filename, Long.parseLong(line));
-                            clientOnlyModsToSend.remove(filename, Long.parseLong(line));
+                            //Remove any matching mods the client already has from both lists and track them for handling mod removal requests
+                            size = Long.parseLong(line);
+                            modsToSend.remove(filename, size);
+                            clientOnlyModsToSend.remove(filename, size);
+                            existingClientMods.put(filename, size);
                             filename = "";
                         }
                     }
                     else
                     {
+                        //Remove any mods client doesn't have installed from removal list, then send removal list
+                        modsToRemove.entrySet().removeIf(entry -> !entry.getValue().equals(existingClientMods.get(entry.getKey())));
+
+                        out.writeInt(modsToRemove.size());
+                        for (Map.Entry<String, Long> entry : modsToRemove.entrySet())
+                        {
+                            filename = entry.getKey();
+                            System.out.println(TextFormatting.LIGHT_PURPLE + "Sending request to remove " + filename + " from " + socket.getInetAddress());
+                            out.writeInt(filename.length());
+                            out.writeChars(filename);
+                        }
+
+
+                        //Send mods to add
                         for (Map.Entry<String, Long> entry : modsToSend.entrySet())
                         {
                             filename = entry.getKey();
@@ -166,7 +201,7 @@ public class ThreadedServerSocket
                             out.writeInt(filename.length());
                             out.writeChars(filename);
                             out.writeLong(entry.getValue());
-                            File file = new File(clientOnlyModsDirectory.getAbsolutePath() + File.separator + filename);
+                            File file = new File(modsClientOnlyDirectory.getAbsolutePath() + File.separator + filename);
                             fileBytes = Files.readAllBytes(file.toPath());
                             out.write(fileBytes);
                         }
@@ -174,6 +209,7 @@ public class ThreadedServerSocket
                         out.flush();
 
 
+                        //Close
                         System.out.println(TextFormatting.LIGHT_PURPLE + "Finished sending mods to " + socket.getInetAddress());
                         socket.close();
                         return;
