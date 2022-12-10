@@ -4,6 +4,7 @@ import com.fantasticsource.mctools.MCTools;
 import com.fantasticsource.tools.Tools;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.util.text.TextFormatting;
 
 import java.io.*;
 import java.net.Socket;
@@ -16,6 +17,7 @@ public class GuiDownloadingMods extends GuiScreen
     public GuiScreen parentScreen;
     public ArrayList<String> textLines = new ArrayList<>();
     public Socket clientSocket = null;
+    public boolean done = false;
 
     public GuiDownloadingMods(GuiScreen screen, ServerData serverData)
     {
@@ -55,7 +57,8 @@ public class GuiDownloadingMods extends GuiScreen
                 try
                 {
                     File downloadsDirectory = new File(MCTools.getConfigDir() + ".." + File.separator + "modsDownloading");
-                    if (!downloadsDirectory.exists()) downloadsDirectory.mkdir();
+                    if (downloadsDirectory.exists()) Tools.deleteFilesRecursively(downloadsDirectory);
+                    downloadsDirectory.mkdir();
 
 
                     long remaining;
@@ -72,13 +75,39 @@ public class GuiDownloadingMods extends GuiScreen
                     }
 
 
-                    //Create batch files to...
-                    //...delete jars when possible
-                    //...then move new jars
-                    //...then delete themselves
-                    //and run them
+                    //Receive new mod files
+                    while (true)
+                    {
+                        remaining = inputStream.readInt();
+                        if (remaining == 0) break;
+                        else
+                        {
+                            filename = "";
+                            for (; remaining > 0; remaining--) filename += inputStream.readChar();
+                            File file = new File(downloadsDirectory.getAbsolutePath() + File.separator + filename);
+                            textLines.add(file.getName());
+                            while (file.exists()) file.delete(); //Delete from downloads folder if it already exists there
+                            FileOutputStream outputStream = new FileOutputStream(file);
+
+                            remaining = inputStream.readLong();
+                            while (remaining > 0)
+                            {
+                                outputStream.write(inputStream.read());
+                                remaining--;
+                            }
+                            outputStream.close();
+                        }
+                    }
+
+
+                    //Handle files
                     if (modsToRemove.size() > 0)
                     {
+                        //Create batch files to...
+                        //...delete jars when possible
+                        //...then move new jars
+                        //...then delete themselves
+                        //and run them
                         File file = new File(modsDirectory + File.separator + "delete_when_possible.bat");
                         while (file.exists()) file.delete();
                         BufferedWriter writer2 = new BufferedWriter(new FileWriter(file));
@@ -112,30 +141,19 @@ public class GuiDownloadingMods extends GuiScreen
 
                         Runtime.getRuntime().exec("cmd /c start /min " + file.getName());
                     }
-
-
-                    //Receive new mod files
-                    while (true)
+                    else
                     {
-                        remaining = inputStream.readInt();
-                        if (remaining == 0) break;
-                        else
+                        //In this case, the batch files aren't moving the jars later, and we don't have anything preventing us from moving them now, so move them
+                        File[] files = downloadsDirectory.listFiles();
+                        if (files != null)
                         {
-                            filename = "";
-                            for (; remaining > 0; remaining--) filename += inputStream.readChar();
-                            File file = new File(downloadsDirectory.getAbsolutePath() + File.separator + filename);
-                            while (file.exists()) file.delete(); //Delete from downloads folder if it already exists there
-                            FileOutputStream outputStream = new FileOutputStream(file);
-
-                            remaining = inputStream.readLong();
-                            while (remaining > 0)
+                            for (File file : files)
                             {
-                                outputStream.write(inputStream.read());
-                                remaining--;
+                                Files.move(file.toPath(), new File(modsDirectory.getAbsolutePath() + File.separator + file.getName()).toPath());
                             }
-                            outputStream.close();
                         }
                     }
+
 
                     //Close
                     clientSocket.close();
@@ -146,9 +164,7 @@ public class GuiDownloadingMods extends GuiScreen
                 }
 
 
-                textLines.clear();
-                textLines.add("Done! Restart the game to finish the update.");
-                textLines.add("DO NOT CLOSE COMMAND PROMPT WINDOWS!!!");
+                done = true;
             }).start();
         }
         catch (IOException e)
@@ -165,20 +181,22 @@ public class GuiDownloadingMods extends GuiScreen
     public void drawScreen(int mouseX, int mouseY, float partialTicks)
     {
         drawDefaultBackground();
+
         int yy = 5;
-        drawCenteredString(fontRenderer, "Downloading mods from server: " + 0 + "%", width / 2, yy, 16777215);
-        yy += fontRenderer.FONT_HEIGHT;
-
-        if (textLines != null)
+        if (!done) drawCenteredString(fontRenderer, "Downloading mods from server...", width / 2, yy, 16777215);
+        else
         {
-            int maxDisplayable = (height - 5 - yy) / (3 + fontRenderer.FONT_HEIGHT);
-            int i = Tools.max(0, textLines.size() - maxDisplayable);
+            drawCenteredString(fontRenderer, TextFormatting.YELLOW + "Done! Restart the game to finish the update.", width / 2, yy, 16777215);
+            yy += 3 + fontRenderer.FONT_HEIGHT;
+            drawCenteredString(fontRenderer, TextFormatting.RED + "DO NOT CLOSE COMMAND PROMPT WINDOWS!!!", width / 2, yy, 16777215);
+        }
+        yy += 3 + fontRenderer.FONT_HEIGHT;
 
-            for (; i < textLines.size(); i++)
-            {
-                yy += 3 + fontRenderer.FONT_HEIGHT;
-                drawCenteredString(fontRenderer, textLines.get(i), width / 2, yy, 11184810);
-            }
+        int maxDisplayable = (height - 5 - yy) / (3 + fontRenderer.FONT_HEIGHT);
+        for (int i = Tools.max(0, textLines.size() - maxDisplayable); i < textLines.size(); i++)
+        {
+            yy += 3 + fontRenderer.FONT_HEIGHT;
+            drawCenteredString(fontRenderer, TextFormatting.GRAY + textLines.get(i), width / 2, yy, 11184810);
         }
 
         super.drawScreen(mouseX, mouseY, partialTicks);

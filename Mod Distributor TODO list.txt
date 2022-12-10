@@ -1,1 +1,2 @@
-Show download progress
+Show download progress?
+If no mods were downloaded and none are queued for removal, say "up to date" and add button to go back
